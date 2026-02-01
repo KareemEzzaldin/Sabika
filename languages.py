@@ -1,5 +1,3 @@
-# languages.py
-
 translations = {
     "ar": {
         "app_name": "Mr.Ali Pro",

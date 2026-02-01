@@ -3,14 +3,19 @@ import yfinance as yf
 import plotly.graph_objects as go
 import pandas as pd
 import time
-from datetime import datetime
 from languages import translations
 
 # ==========================================
 # ⚙️ إعدادات الصفحة
 # ==========================================
 st.set_page_config(page_title="Mr.Ali Pro", layout="wide", page_icon="🔢")
-GOLD_SYMBOL = "GC=F"
+GOLD_SYMBOL = "GC=F" # رمز الذهب
+
+# ==========================================
+# 🔄 تهيئة الجلسة
+# ==========================================
+if 'last_refresh' not in st.session_state:
+    st.session_state.last_refresh = time.time()
 
 # ==========================================
 # 🎨 الستايل (CSS)
@@ -36,190 +41,184 @@ st.markdown("""
     .card-value { font-size: 1.4rem; font-weight: bold; color: #fff; direction: ltr; }
     .zone-title { text-align: center; font-weight: bold; font-size: 1.5rem; margin-bottom: 15px; }
     .order-alert { padding: 20px; background-color: #FFD700; color: #000; border-radius: 10px; text-align: center; font-weight: 900; font-size: 1.5rem; margin-bottom: 20px; animation: pulse 1s infinite; }
-    
-    /* تنسيق خفيف للحقول */
-    div[data-baseweb="input"] { border-radius: 8px; background-color: #262730; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🛠️ الهيدر والإعدادات الجانبية
+# 🎛️ لوحة التحكم في الأرقام (هنا التعديل الجديد)
 # ==========================================
-c1, c2 = st.columns([3, 1])
-with c1:
-    st.markdown(f"<h1 style='color:#FFD700;'>Mr.Ali Pro <span style='font-size:1rem; color:#aaa'>(Calculator)</span></h1>", unsafe_allow_html=True)
-with c2:
-    # خيار لتفعيل بيانات السوق الحية بدلاً من اليدوي
-    use_live_data = st.checkbox("📡 استخدام بيانات السوق الحية (Yahoo)", value=False)
-
-# ==========================================
-# ✍️ منطقة الإدخال اليدوي (فوق الشارت مباشرة)
-# ==========================================
-if not use_live_data:
-    st.markdown("### 📝 أدخل بيانات الشمعة والمعادلة يدوياً")
-    
-    # الصف الأول: بيانات السعر
-    col_p1, col_p2, col_p3 = st.columns(3)
-    with col_p1: 
-        INPUT_HIGH = st.number_input("القمة (High)", value=0.0, step=0.1, format="%.2f", help="أعلى سعر للشمعة")
-    with col_p2: 
-        INPUT_LOW = st.number_input("القاع (Low)", value=0.0, step=0.1, format="%.2f", help="أقل سعر للشمعة")
-    with col_p3: 
-        INPUT_CLOSE = st.number_input("السعر الحالي (Current Price)", value=0.0, step=0.1, format="%.2f", help="السعر الحالي لتحديد مكانك من المناطق")
-
-    # الصف الثاني: متغيرات المعادلة
-    st.markdown("##### 🔢 متغيرات المعادلة")
-    col_v1, col_v2, col_v3 = st.columns(3)
-    with col_v1: 
-        INPUT_SERIAL_UP = st.number_input("Serial UP", value=852.0, step=1.0, format="%.2f")
-    with col_v2: 
-        INPUT_SERIAL_DOWN = st.number_input("Serial DOWN", value=258.0, step=1.0, format="%.2f")
-    with col_v3: 
-        INPUT_POWER = st.number_input("Power (الأس)", value=2.0, step=0.1, format="%.2f")
-
-    st.markdown("---")
+with st.expander("🔢 إعدادات المعادلة (Equation Inputs)", expanded=True):
+    col_eq1, col_eq2, col_eq3 = st.columns(3)
+    with col_eq1:
+        # الرقم الافتراضي 852.0
+        USER_SERIAL_UP = st.number_input("Serial UP (الصعود)", value=852.0, step=1.0, format="%.2f")
+    with col_eq2:
+        # الرقم الافتراضي 258.0
+        USER_SERIAL_DOWN = st.number_input("Serial DOWN (الهبوط)", value=258.0, step=1.0, format="%.2f")
+    with col_eq3:
+        # الأس الافتراضي 2.0
+        USER_POWER = st.number_input("Power (الأس)", value=2.0, step=0.1, format="%.2f")
 
 # ==========================================
-# 📡 منطق جلب البيانات (يدوي أو آلي)
+# ⚙️ إعدادات العرض واللغة
 # ==========================================
-# متغيرات ستستخدم في الحساب
-calc_high = 0.0
-calc_low = 0.0
-calc_close = 0.0
-calc_prev_close = 0.0 # للوضع الآلي فقط
-calc_s_up = INPUT_SERIAL_UP if not use_live_data else 852.0
-calc_s_down = INPUT_SERIAL_DOWN if not use_live_data else 258.0
-calc_power = INPUT_POWER if not use_live_data else 2.0
-df_chart = pd.DataFrame() # للشارت
+with st.expander("⚙️ Settings / إعدادات العرض", expanded=False):
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        language_sel = st.selectbox("اللغة / Language", ["العربية", "English"])
+    with c2:
+        selected_tf_display = st.selectbox(
+            "اختر الفريم / Select Timeframe", 
+            ["1 Minute", "15 Minutes", "30 Minutes", "1 Hour", "4 Hours", "Daily", "Weekly"],
+            index=3
+        )
+    with c3:
+        auto_refresh = st.checkbox("تحديث تلقائي / Auto Refresh", value=True)
 
-if use_live_data:
-    # جلب من Yahoo
-    ticker = yf.Ticker(GOLD_SYMBOL)
-    df = ticker.history(period="5d", interval="1h") # فريم الساعة كمثال
-    if not df.empty:
-        calc_high = df['High'].iloc[-1]
-        calc_low = df['Low'].iloc[-1]
-        calc_close = df['Close'].iloc[-1]
-        calc_prev_close = df['Close'].iloc[-2]
-        df_chart = df # نستخدم الداتا فريم كاملة للرسم
-    else:
-        st.error("فشل في جلب بيانات السوق الحية.")
-        st.stop()
-else:
-    # استخدام البيانات اليدوية
-    calc_high = INPUT_HIGH
-    calc_low = INPUT_LOW
-    calc_close = INPUT_CLOSE
-    # في اليدوي، نعتبر الاتجاه صاعد إذا السعر الحالي أكبر من (القمة+القاع)/2 كتقدير، أو نترك المستخدم يقرر
-    # لتبسيط الأمر: سنحسب المنطقتين دائماً
-    
-    # تكوين شمعة وهمية للرسم البياني
-    if calc_high > 0:
-        data = {
-            'Date': [datetime.now()],
-            'Open': [(calc_high + calc_low)/2], # افتراضي
-            'High': [calc_high],
-            'Low': [calc_low],
-            'Close': [calc_close if calc_close > 0 else (calc_high+calc_low)/2]
-        }
-        df_chart = pd.DataFrame(data)
+lang_code = "ar" if language_sel == "العربية" else "en"
+t = translations[lang_code]
+
+# الشعار
+st.markdown(f"""
+<div style="text-align: center; margin-bottom: 20px;">
+    <h1 style="font-size: 3.5rem; font-weight: 900; background: linear-gradient(to bottom, #FFD700, #8A6E2F); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+        {t['app_name']}
+    </h1>
+    <p style="color: #888;">{t['slogan']}</p>
+</div>
+""", unsafe_allow_html=True)
 
 # ==========================================
-# 🧮 الحسابات (المنطق الموحد)
+# 📡 دالة جلب البيانات (Yahoo Finance)
 # ==========================================
-if calc_high > 0 and calc_low > 0:
-    
-    # 1. معادلة الشراء
-    calc_up_val = (calc_high / calc_s_up) ** calc_power
-    buy_entry = calc_high + calc_up_val
-    buy_sl = buy_entry - 7.0
-    buy_tp = buy_entry + 7.0
+@st.cache_data(ttl=60) 
+def get_data():
+    data = {}
+    try:
+        ticker = yf.Ticker(GOLD_SYMBOL)
+        
+        def fetch(period, interval):
+            df = ticker.history(period=period, interval=interval)
+            if df.empty: return pd.DataFrame()
+            df.index = df.index.tz_localize(None) 
+            df['Date'] = df.index
+            return df[['Date', 'Open', 'High', 'Low', 'Close', 'Volume']]
 
-    # 2. معادلة البيع
-    calc_down_val = (calc_low / calc_s_down) ** calc_power
-    sell_entry = calc_low + calc_down_val
-    sell_sl = sell_entry + 7.0
-    sell_tp = sell_entry - 7.0
+        # جلب الفريمات
+        data["M1"] = fetch("5d", "1m") 
+        data["M15"] = fetch("5d", "15m")
+        data["M30"] = fetch("5d", "30m")
+        data["H1"] = fetch("1mo", "1h") 
+        
+        # حساب 4 ساعات يدوياً
+        if not data["H1"].empty:
+            df_4h = data["H1"].resample('4h', on='Date').agg({
+                'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+            }).dropna()
+            df_4h['Date'] = df_4h.index
+            data["H4"] = df_4h
+        else:
+            data["H4"] = pd.DataFrame()
 
-    # تحديد أين السعر الآن (تنشيط الكروت)
-    is_bull_active = False
-    is_bear_active = False
-    
-    if calc_close > 0:
-        if calc_close >= buy_entry: is_bull_active = True
-        if calc_close <= sell_entry: is_bear_active = True
+        data["D1"] = fetch("1y", "1d")
+        data["W1"] = fetch("2y", "1wk")
+        
+        return data, None
+    except Exception as e:
+        return None, str(e)
 
-    # ==========================================
-    # 📟 العرض (الكروت والشارت)
-    # ==========================================
-    
-    # كود CSS للكروت النشطة
-    cls_buy = "active-buy" if is_bull_active else ""
-    cls_sell = "active-sell" if is_bear_active else ""
-    
-    # عرض التنبيهات
-    if is_bull_active: 
-        st.markdown(f'<div class="order-alert">🚀 السعر في منطقة الشراء: {buy_entry:.2f}</div>', unsafe_allow_html=True)
-    elif is_bear_active:
-        st.markdown(f'<div class="order-alert">🔻 السعر في منطقة البيع: {sell_entry:.2f}</div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f"""<div style="text-align:center; margin-bottom:15px; border:1px dashed #444; padding:10px; border-radius:10px;">منطقة انتظار (داخل النطاق)</div>""", unsafe_allow_html=True)
+data_dict, error_msg = get_data()
 
-    # الكروت (Cards)
-    c_b, c_s = st.columns(2)
-    
-    # كروت الشراء
-    with c_b: 
-        st.markdown(f'<div class="zone-title" style="color:#00FF7F;">منطقة الشراء (Bullish)</div>', unsafe_allow_html=True)
-        c1, c2, c3 = st.columns(3)
-        with c1: st.markdown(f'<div class="mini-card buy-box {cls_buy}"><div class="card-title">نقطة الدخول</div><div class="card-value">${buy_entry:,.2f}</div></div>', unsafe_allow_html=True)
-        with c2: st.markdown(f'<div class="mini-card buy-box {cls_buy}"><div class="card-title" style="color:#FF4444;">وقف الخسارة</div><div class="card-value">${buy_sl:,.2f}</div></div>', unsafe_allow_html=True)
-        with c3: st.markdown(f'<div class="mini-card buy-box {cls_buy}"><div class="card-title" style="color:#00FF7F;">الهدف</div><div class="card-value">${buy_tp:,.2f}</div></div>', unsafe_allow_html=True)
+if error_msg:
+    st.error(f"Error: {error_msg}")
+    st.stop()
 
-    # كروت البيع
-    with c_s: 
-        st.markdown(f'<div class="zone-title" style="color:#FF4444;">منطقة البيع (Bearish)</div>', unsafe_allow_html=True)
-        c1, c2, c3 = st.columns(3)
-        with c1: st.markdown(f'<div class="mini-card sell-box {cls_sell}"><div class="card-title">نقطة الدخول</div><div class="card-value">${sell_entry:,.2f}</div></div>', unsafe_allow_html=True)
-        with c2: st.markdown(f'<div class="mini-card sell-box {cls_sell}"><div class="card-title" style="color:#FF4444;">وقف الخسارة</div><div class="card-value">${sell_sl:,.2f}</div></div>', unsafe_allow_html=True)
-        with c3: st.markdown(f'<div class="mini-card sell-box {cls_sell}"><div class="card-title" style="color:#00FF7F;">الهدف</div><div class="card-value">${sell_tp:,.2f}</div></div>', unsafe_allow_html=True)
+# ==========================================
+# 🧮 المنطق الحسابي (يستخدم الأرقام المدخلة من المستخدم)
+# ==========================================
+def calculate_logic(df):
+    if df.empty or len(df) < 3: return None
 
-    # الرسم البياني (Chart)
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # إعداد الشارت
-    fig = go.Figure(data=[go.Candlestick(
-        x=df_chart['Date'],
-        open=df_chart['Open'],
-        high=df_chart['High'],
-        low=df_chart['Low'],
-        close=df_chart['Close'],
-        name="Price"
-    )])
-    
-    # إضافة الخطوط
-    fig.add_hline(y=buy_entry, line_dash="dash", line_color="#00FF7F", annotation_text="Buy Entry")
-    fig.add_hline(y=sell_entry, line_dash="dash", line_color="#FF4444", annotation_text="Sell Entry")
-    
-    # تنسيق الشارت
-    chart_title = "Manual Calculation Chart" if not use_live_data else "Live Market Chart"
-    fig.update_layout(
-        height=500, 
-        margin=dict(l=10,r=10,t=30,b=10), 
-        paper_bgcolor='rgba(0,0,0,0)', 
-        plot_bgcolor='rgba(0,0,0,0)', 
-        font=dict(color="#888"), 
-        title=chart_title, 
-        xaxis_rangeslider_visible=False
-    )
-    fig.update_xaxes(showgrid=False)
-    fig.update_yaxes(showgrid=True, gridcolor='#2b2f44')
-    
-    st.plotly_chart(fig, use_container_width=True)
+    # استخدام القيم التي أدخلها المستخدم
+    serial_up = USER_SERIAL_UP
+    serial_down = USER_SERIAL_DOWN
+    power_val = USER_POWER
 
-else:
-    if not use_live_data:
-        st.info("👈 يرجى إدخال **القمة (High)** و **القاع (Low)** في الخانات بالأعلى لبدء الحساب.")
+    high = df['High'].iloc[-2]
+    low = df['Low'].iloc[-2]
+    close = df['Close'].iloc[-2]
+    prev_close = df['Close'].iloc[-3]
+    is_bullish = close >= prev_close
 
-# تذييل بسيط
-st.markdown(f"<div style='text-align:center; margin-top:20px; color:#666;'>Developed by Mr.Ali | © 2026</div>", unsafe_allow_html=True)
+    # تطبيق المعادلة بالأرقام الجديدة
+    calc_up_val = (high / serial_up) ** power_val
+    calc_down_val = (low / serial_down) ** power_val
+
+    # 🟢 شراء (اختراق القمة)
+    buy_entry = high + calc_up_val
+    buy_sl = buy_entry - 7.0 
+    buy_tp = buy_entry + 7.0 
+
+    # 🔴 بيع (ارتداد من القاع)
+    sell_entry = low + calc_down_val
+    sell_sl = sell_entry + 7.0 
+    sell_tp = sell_entry - 7.0 
+
+    return {
+        "is_bullish": is_bullish,
+        "calc_val": calc_up_val if is_bullish else calc_down_val,
+        "trend_str": "صاعد (Buy)" if is_bullish else "هابط (Sell)",
+        "trend_color": "🟢" if is_bullish else "🔴",
+        "buy_scenario": {"entry": buy_entry, "sl": buy_sl, "tp": buy_tp},
+        "sell_scenario": {"entry": sell_entry, "sl": sell_sl, "tp": sell_tp}
+    }
+
+# ==========================================
+# 📟 عرض الفريم المختار
+# ==========================================
+tf_keys_map = {
+    "1 Minute": "M1", "15 Minutes": "M15", "30 Minutes": "M30",
+    "1 Hour": "H1", "4 Hours": "H4", "Daily": "D1", "Weekly": "W1"
+}
+
+active_key = tf_keys_map[selected_tf_display]
+df_active = data_dict.get(active_key, pd.DataFrame())
+
+if not df_active.empty:
+    current_price = df_active['Close'].iloc[-1]
+    logic_res = calculate_logic(df_active)
+
+    if logic_res:
+        st.markdown(f"<h3 style='text-align:center; color:#AAA;'>{t['current_view']} <span style='color:#FFD700;'>{selected_tf_display}</span></h3>", unsafe_allow_html=True)
+        
+        bs, ss = logic_res["buy_scenario"], logic_res["sell_scenario"]
+        class_buy, class_sell, alert_txt = "", "", ""
+
+        if logic_res["is_bullish"]:
+            class_buy = "active-buy"
+            if current_price >= bs["entry"]: alert_txt = f"{t['alert_buy']} {bs['entry']:.2f}"
+        else:
+            class_sell = "active-sell"
+            if current_price <= ss["entry"]: alert_txt = f"{t['alert_sell']} {ss['entry']:.2f}"
+
+        if alert_txt: st.markdown(f'<div class="order-alert">{alert_txt}</div>', unsafe_allow_html=True)
+        else: st.markdown(f"""<div style="text-align:center; margin-bottom:15px; border:1px dashed #444; padding:10px; border-radius:10px;">{t['wait_zone']} <b>${current_price:,.2f}</b></div>""", unsafe_allow_html=True)
+
+        c_b, c_s = st.columns(2)
+        with c_b: 
+            st.markdown(f'<div class="zone-title" style="color:#00FF7F;">{t["buy_zone_title"]}</div>', unsafe_allow_html=True)
+            c1, c2, c3 = st.columns(3)
+            with c1: st.markdown(f'<div class="mini-card buy-box {class_buy}"><div class="card-title">{t["entry_point"]}</div><div class="card-value">${bs["entry"]:,.2f}</div></div>', unsafe_allow_html=True)
+            with c2: st.markdown(f'<div class="mini-card buy-box {class_buy}"><div class="card-title" style="color:#FF4444;">{t["stop_loss"]}</div><div class="card-value">${bs["sl"]:,.2f}</div></div>', unsafe_allow_html=True)
+            with c3: st.markdown(f'<div class="mini-card buy-box {class_buy}"><div class="card-title" style="color:#00FF7F;">{t["take_profit"]}</div><div class="card-value">${bs["tp"]:,.2f}</div></div>', unsafe_allow_html=True)
+
+        with c_s: 
+            st.markdown(f'<div class="zone-title" style="color:#FF4444;">{t["sell_zone_title"]}</div>', unsafe_allow_html=True)
+            c1, c2, c3 = st.columns(3)
+            with c1: st.markdown(f'<div class="mini-card sell-box {class_sell}"><div class="card-title">{t["entry_point"]}</div><div class="card-value">${ss["entry"]:,.2f}</div></div>', unsafe_allow_html=True)
+            with c2: st.markdown(f'<div class="mini-card sell-box {class_sell}"><div class="card-title" style="color:#FF4444;">{t["stop_loss"]}</div><div class="card-value">${ss["sl"]:,.2f}</div></div>', unsafe_allow_html=True)
+            with c3: st.markdown(f'<div class="mini-card sell-box {class_sell}"><div class="card-title" style="color:#00FF7F;">{t["take_profit"]}</div><div class="card-value">${ss["tp"]:,.2f}</div></div>', unsafe_allow_html=True)
+
+        # الشارت
+        st.markdown("<br>", unsafe_allow_html=True)
+        fig = go.

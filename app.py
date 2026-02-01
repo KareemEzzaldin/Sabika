@@ -6,14 +6,10 @@ import time
 from languages import translations
 
 # ==========================================
-# 🔐 الأرقام السرية وإعدادات الذهب
+# ⚙️ إعدادات الصفحة
 # ==========================================
-SERIAL_UP = 852.0   
-SERIAL_DOWN = 258.0 
-POWER_VAL = 2.0       
-GOLD_SYMBOL = "GC=F" # العقود الآجلة للذهب
-
 st.set_page_config(page_title="Mr.Ali Pro", layout="wide", page_icon="📊")
+GOLD_SYMBOL = "GC=F" # العقود الآجلة للذهب
 
 # ==========================================
 # 🔄 تهيئة الجلسة
@@ -49,9 +45,22 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# ⚙️ الإعدادات
+# 🔢 إدخال المعادلة (هنا التعديل الجديد)
 # ==========================================
-with st.expander("⚙️ Settings / الإعدادات", expanded=True):
+# وضعنا هذه الخانة في البداية لتتحكم في كل الحسابات
+with st.expander("🔢 إعدادات المعادلة (Equation Inputs)", expanded=True):
+    col_eq1, col_eq2, col_eq3 = st.columns(3)
+    with col_eq1:
+        USER_SERIAL_UP = st.number_input("Serial UP (الصعود)", value=852.0, step=1.0, format="%.2f")
+    with col_eq2:
+        USER_SERIAL_DOWN = st.number_input("Serial DOWN (الهبوط)", value=258.0, step=1.0, format="%.2f")
+    with col_eq3:
+        USER_POWER = st.number_input("Power (الأس)", value=2.0, step=0.1, format="%.2f")
+
+# ==========================================
+# ⚙️ الإعدادات العامة
+# ==========================================
+with st.expander("⚙️ Settings / الإعدادات", expanded=False):
     c1, c2, c3 = st.columns(3)
     with c1:
         language_sel = st.selectbox("اللغة / Language", ["العربية", "English"])
@@ -67,7 +76,7 @@ with st.expander("⚙️ Settings / الإعدادات", expanded=True):
 lang_code = "ar" if language_sel == "العربية" else "en"
 t = translations[lang_code]
 
-# الشعار (Clean)
+# الشعار
 st.markdown(f"""
 <div style="text-align: center; margin-bottom: 20px;">
     <h1 style="font-size: 3.5rem; font-weight: 900; background: linear-gradient(to bottom, #FFD700, #8A6E2F); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
@@ -123,19 +132,27 @@ if error_msg:
     st.stop()
 
 # ==========================================
-# 🧮 المنطق الحسابي (شراء اختراق / بيع ارتداد / ستوب 7$)
+# 🧮 المنطق الحسابي (يستخدم الأرقام المدخلة من الخانات)
 # ==========================================
 def calculate_logic(df):
     if df.empty or len(df) < 3: return None
 
-    high = df['High'].iloc[-2]
-    low = df['Low'].iloc[-2]
-    close = df['Close'].iloc[-2]
-    prev_close = df['Close'].iloc[-3]
+    # استخدام القيم التي أدخلتها في المربعات
+    serial_up = USER_SERIAL_UP
+    serial_down = USER_SERIAL_DOWN
+    power_val = USER_POWER
+
+    # القراءات من الشارت
+    high = df['High'].iloc[-1]
+    low = df['Low'].iloc[-1]
+    close = df['Close'].iloc[-1]
+    prev_close = df['Close'].iloc[-2]
+    
     is_bullish = close >= prev_close
 
-    calc_up_val = (high / SERIAL_UP) ** POWER_VAL
-    calc_down_val = (low / SERIAL_DOWN) ** POWER_VAL
+    # المعادلة الحسابية
+    calc_up_val = (high / serial_up) ** power_val
+    calc_down_val = (low / serial_down) ** power_val
 
     # 🟢 شراء (اختراق القمة)
     buy_entry = high + calc_up_val

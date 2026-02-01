@@ -6,10 +6,14 @@ import time
 from languages import translations
 
 # ==========================================
-# ⚙️ إعدادات الصفحة
+# 🔐 الأرقام السرية وإعدادات الذهب
 # ==========================================
-st.set_page_config(page_title="Mr.Ali Pro", layout="wide", page_icon="🔢")
-GOLD_SYMBOL = "GC=F" # رمز الذهب
+SERIAL_UP = 852.0   
+SERIAL_DOWN = 258.0 
+POWER_VAL = 2.0       
+GOLD_SYMBOL = "GC=F" # العقود الآجلة للذهب
+
+st.set_page_config(page_title="Mr.Ali Pro", layout="wide", page_icon="📊")
 
 # ==========================================
 # 🔄 تهيئة الجلسة
@@ -45,24 +49,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🎛️ لوحة التحكم في الأرقام (هنا التعديل الجديد)
+# ⚙️ الإعدادات
 # ==========================================
-with st.expander("🔢 إعدادات المعادلة (Equation Inputs)", expanded=True):
-    col_eq1, col_eq2, col_eq3 = st.columns(3)
-    with col_eq1:
-        # الرقم الافتراضي 852.0
-        USER_SERIAL_UP = st.number_input("Serial UP (الصعود)", value=852.0, step=1.0, format="%.2f")
-    with col_eq2:
-        # الرقم الافتراضي 258.0
-        USER_SERIAL_DOWN = st.number_input("Serial DOWN (الهبوط)", value=258.0, step=1.0, format="%.2f")
-    with col_eq3:
-        # الأس الافتراضي 2.0
-        USER_POWER = st.number_input("Power (الأس)", value=2.0, step=0.1, format="%.2f")
-
-# ==========================================
-# ⚙️ إعدادات العرض واللغة
-# ==========================================
-with st.expander("⚙️ Settings / إعدادات العرض", expanded=False):
+with st.expander("⚙️ Settings / الإعدادات", expanded=True):
     c1, c2, c3 = st.columns(3)
     with c1:
         language_sel = st.selectbox("اللغة / Language", ["العربية", "English"])
@@ -78,7 +67,7 @@ with st.expander("⚙️ Settings / إعدادات العرض", expanded=False):
 lang_code = "ar" if language_sel == "العربية" else "en"
 t = translations[lang_code]
 
-# الشعار
+# الشعار (Clean)
 st.markdown(f"""
 <div style="text-align: center; margin-bottom: 20px;">
     <h1 style="font-size: 3.5rem; font-weight: 900; background: linear-gradient(to bottom, #FFD700, #8A6E2F); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
@@ -134,15 +123,10 @@ if error_msg:
     st.stop()
 
 # ==========================================
-# 🧮 المنطق الحسابي (يستخدم الأرقام المدخلة من المستخدم)
+# 🧮 المنطق الحسابي (شراء اختراق / بيع ارتداد / ستوب 7$)
 # ==========================================
 def calculate_logic(df):
     if df.empty or len(df) < 3: return None
-
-    # استخدام القيم التي أدخلها المستخدم
-    serial_up = USER_SERIAL_UP
-    serial_down = USER_SERIAL_DOWN
-    power_val = USER_POWER
 
     high = df['High'].iloc[-2]
     low = df['Low'].iloc[-2]
@@ -150,9 +134,8 @@ def calculate_logic(df):
     prev_close = df['Close'].iloc[-3]
     is_bullish = close >= prev_close
 
-    # تطبيق المعادلة بالأرقام الجديدة
-    calc_up_val = (high / serial_up) ** power_val
-    calc_down_val = (low / serial_down) ** power_val
+    calc_up_val = (high / SERIAL_UP) ** POWER_VAL
+    calc_down_val = (low / SERIAL_DOWN) ** POWER_VAL
 
     # 🟢 شراء (اختراق القمة)
     buy_entry = high + calc_up_val
@@ -221,4 +204,39 @@ if not df_active.empty:
 
         # الشارت
         st.markdown("<br>", unsafe_allow_html=True)
-        fig = go.
+        fig = go.Figure(data=[go.Candlestick(x=df_active['Date'], open=df_active['Open'], high=df_active['High'], low=df_active['Low'], close=df_active['Close'], name=selected_tf_display)])
+        fig.add_hline(y=bs["entry"], line_dash="dash", line_color="#00FF7F", annotation_text="Buy Entry")
+        fig.add_hline(y=ss["entry"], line_dash="dash", line_color="#FF4444", annotation_text="Sell Entry")
+        fig.update_layout(height=500, margin=dict(l=10,r=10,t=30,b=10), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color="#888"), title=f"{t['chart_title']} {selected_tf_display}", dragmode='pan', xaxis_rangeslider_visible=False)
+        fig.update_xaxes(showgrid=False)
+        fig.update_yaxes(showgrid=True, gridcolor='#2b2f44')
+        st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
+else:
+    st.warning("No Data available.")
+
+# ==========================================
+# 📊 الجدول الشامل
+# ==========================================
+st.markdown("---")
+st.markdown(f"<h3 style='text-align:center; color:#FFD700;'>{t['table_header']}</h3>", unsafe_allow_html=True)
+
+table_data = []
+for name, key in [("Weekly", "W1"), ("Daily", "D1"), ("4 Hours", "H4"), ("1 Hour", "H1"), ("30 Min", "M30"), ("15 Min", "M15")]:
+    df_temp = data_dict.get(key, pd.DataFrame())
+    res = calculate_logic(df_temp)
+    if res:
+        if res["is_bullish"]: target, sl = res["buy_scenario"]["entry"], res["buy_scenario"]["sl"]
+        else: target, sl = res["sell_scenario"]["entry"], res["sell_scenario"]["sl"]
+        table_data.append({
+            t['th_timeframe']: name, t['th_calc']: f"{res['calc_val']:.2f}", t['th_trend']: f"{res['trend_color']} {res['trend_str']}",
+            t['stop_loss']: f"${sl:,.2f}", t['th_target']: f"${target:,.2f}"
+        })
+
+if table_data:
+    st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True, column_config={t['th_target']: st.column_config.TextColumn(t['th_target'], disabled=True)})
+
+st.markdown(f"<div style='text-align:center; margin-top:20px; color:#666;'>{t['credits']}</div>", unsafe_allow_html=True)
+
+if auto_refresh:
+    time.sleep(60) 
+    st.rerun()

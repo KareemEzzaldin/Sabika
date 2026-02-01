@@ -116,21 +116,26 @@ if error_msg:
 def calculate_logic(df):
     if df.empty or len(df) < 3: return None
 
-    high = df['High'].iloc[-2]
-    low = df['Low'].iloc[-2]
-    close = df['Close'].iloc[-2]
-    prev_close = df['Close'].iloc[-3]
+    # 🔥 التعديل هنا: استخدام iloc[-1] بدلاً من iloc[-2]
+    # هذا يعني: خذ بيانات الشمعة الحالية التي تتحرك الآن
+    high = df['High'].iloc[-1]
+    low = df['Low'].iloc[-1]
+    close = df['Close'].iloc[-1]
+    
+    # مقارنتها مع إغلاق الشمعة السابقة لها
+    prev_close = df['Close'].iloc[-2]
+    
     is_bullish = close >= prev_close
 
     calc_up_val = (high / SERIAL_UP) ** POWER_VAL
     calc_down_val = (low / SERIAL_DOWN) ** POWER_VAL
 
-    # 🟢 شراء (اختراق القمة)
+    # 🟢 شراء (اختراق القمة الحالية)
     buy_entry = high + calc_up_val
     buy_sl = buy_entry - 7.0 
     buy_tp = buy_entry + 7.0 
 
-    # 🔴 بيع (ارتداد من القاع) - التعديل الخاص بك
+    # 🔴 بيع (ارتداد من القاع الحالي)
     sell_entry = low + calc_down_val
     sell_sl = sell_entry + 7.0 
     sell_tp = sell_entry - 7.0 
@@ -224,3 +229,4 @@ st.markdown(f"<div style='text-align:center; margin-top:20px; color:#666;'>{t['c
 if auto_refresh:
     time.sleep(60) 
     st.rerun()
+
